@@ -5,3 +5,5 @@ pandas
 numpy
 python-docx
 PyMuPDF
+docx2txt
+
