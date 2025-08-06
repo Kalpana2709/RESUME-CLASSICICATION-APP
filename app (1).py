@@ -1,57 +1,59 @@
-
 import streamlit as st
 import pickle
-import docx2txt
+import numpy as np
+from docx import Document
 import fitz  # PyMuPDF
 import os
 
-# Load models
+# Title
+st.title("🧠 AI Resume Classifier App")
+st.write("Upload a resume (DOCX or PDF) and get an instant prediction.")
+
+# Load model and vectorizer
 with open("resume_classifier.pkl", "rb") as f:
     model = pickle.load(f)
 
 with open("tfidf_vectorizer.pkl", "rb") as f:
-    vectorizer = pickle.load(f)
+    tfidf_vectorizer = pickle.load(f)
 
 with open("label_encoder.pkl", "rb") as f:
     label_encoder = pickle.load(f)
 
-# Function to extract text from uploaded file
-def extract_text(file):
-    ext = file.name.split('.')[-1].lower()
-    if ext == 'pdf':
-        doc = fitz.open(stream=file.read(), filetype='pdf')
-        text = ""
+# Functions to read files
+def read_docx(file):
+    doc = Document(file)
+    return "\n".join([para.text for para in doc.paragraphs])
+
+def read_pdf(file):
+    text = ""
+    with fitz.open(stream=file.read(), filetype="pdf") as doc:
         for page in doc:
             text += page.get_text()
-        return text
-    elif ext == 'docx':
-        with open("temp.docx", "wb") as f:
-            f.write(file.read())
-        return docx2txt.process("temp.docx")
-    else:
-        return ""
+    return text
 
-# Streamlit UI
-st.set_page_config(page_title="Resume Classifier", page_icon="🧠")
-st.title("🧠 AI Resume Classifier")
-st.markdown("Upload a resume to predict the candidate category")
+# Upload file
+uploaded_file = st.file_uploader("Upload Resume (.docx or .pdf)", type=["docx", "pdf"])
 
-uploaded_file = st.file_uploader("Choose a resume file (.pdf or .docx)", type=["pdf", "docx"])
-
-if uploaded_file is not None:
-    resume_text = extract_text(uploaded_file)
+if uploaded_file:
+    # Extract text
+    file_extension = os.path.splitext(uploaded_file.name)[1].lower()
     
-    if resume_text.strip() == "":
-        st.error("❌ Failed to extract text from the resume.")
+    if file_extension == ".docx":
+        resume_text = read_docx(uploaded_file)
+    elif file_extension == ".pdf":
+        resume_text = read_pdf(uploaded_file)
     else:
-        st.success("✅ Text extracted successfully!")
-        st.subheader("📄 Extracted Text Preview:")
-        st.write(resume_text[:1000] + "..." if len(resume_text) > 1000 else resume_text)
+        st.error("Unsupported file format. Please upload a DOCX or PDF.")
+        resume_text = None
 
-        # Preprocess & predict
-        features = vectorizer.transform([resume_text])
-        pred = model.predict(features)
-        label = label_encoder.inverse_transform(pred)
+    # Predict
+    if resume_text:
+        # Vectorize
+        input_vector = tfidf_vectorizer.transform([resume_text])
+        prediction = model.predict(input_vector)
+        predicted_label = label_encoder.inverse_transform(prediction)[0]
 
-        st.subheader("🎯 Predicted Category:")
-        st.success(label[0])
+        # Output
+        st.subheader("✅ Predicted Category:")
+        st.success(predicted_label)
+
